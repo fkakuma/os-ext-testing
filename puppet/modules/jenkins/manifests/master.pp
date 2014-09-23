@@ -97,7 +97,6 @@ class jenkins::master(
     'python-sqlalchemy',  # devstack-gate
     'ssl-cert',
     'sqlite3', # interact with devstack-gate DB
-    'daemon',
   ]
 
   package { $packages:
@@ -105,30 +104,8 @@ class jenkins::master(
   }
 
   package { 'jenkins':
-    ensure  => 1.533,
-    require => Exec ['install-jenkins-1.533'],
-  }
-
-  exec { 'install-jenkins-1.533':
-    command => 'dpkg --force-confold -i jenkins_1.533_all.deb',
-    path    => ['/sbin', '/bin', '/usr/sbin', '/usr/bin'],
-    require => [ Package ['daemon'],
-                 Exec ['download-jenkins-1.533'] ],
-  }
-
-  exec { 'download-jenkins-1.533':
-    command => 'wget http://pkg.jenkins-ci.org/debian/binary/jenkins_1.533_all.deb',
-    path    => ['/sbin', '/bin', '/usr/sbin', '/usr/bin'],
-    unless  => 'test -e jenkins_1.533_all.deb',
-    require => Package['wget'],
-  }
-
-  file { '/etc/apt/preferences.d/01-jenkins.pref':
     ensure  => present,
-    owner   => 'root',
-    group   => 'root',
-    mode    => '0444',
-    source  => 'puppet:///modules/jenkins/01-jenkins.pref',
+    require => Apt::Source['jenkins'],
   }
 
   exec { 'update apt cache':
