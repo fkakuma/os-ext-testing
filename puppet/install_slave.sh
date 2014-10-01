@@ -11,10 +11,9 @@ DATA_PATH=$THIS_DIR/data
 OSEXT_PATH=$THIS_DIR/os-ext-testing
 OSEXT_REPO=${OSEXT_REPO:-https://github.com/jaypipes/os-ext-testing}
 CONFIG_REPO=${CONFIG_REPO:-https://review.openstack.org/p/openstack-infra/config.git}
-PROJECT_CONFIG_REPO=${PROJECT_CONFIG_REPO:-https://review.openstack.org/p/openstack-infra/project-config.git}
 DEVSTACK_GATE_REPO=${DEVSTACK_GATE_REPO:-git://git.openstack.org/openstack-infra/devstack-gate}
 DEVSTACK_GATE_3PPRJ_BASE=${DEVSTACK_GATE_3PPRJ_BASE:-osrg}
-PUPPET_MODULE_PATH="--modulepath=$OSEXT_PATH/puppet/modules:/root/config/modules:/root/project-config:/etc/puppet/modules"
+PUPPET_MODULE_PATH="--modulepath=$OSEXT_PATH/puppet/modules:/root/config/modules:/etc/puppet/modules"
 INST_PUPPET_SH=${PUPPET_SH:-https://git.openstack.org/cgit/openstack-infra/config/plain/install_puppet.sh}
 
 # Install Puppet and the OpenStack Infra Config source tree
@@ -22,7 +21,6 @@ if [[ ! -e install_puppet.sh ]]; then
   wget $INST_PUPPET_SH
   sudo bash -xe install_puppet.sh
   sudo git clone $CONFIG_REPO /root/config
-  sudo git clone $PROJECT_CONFIG_REPO /root/project-config
   sudo /bin/bash /root/config/install_modules.sh
 fi
 
