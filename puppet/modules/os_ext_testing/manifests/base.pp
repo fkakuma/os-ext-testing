@@ -3,6 +3,7 @@
 
 class os_ext_testing::base(
   $certname = $::fqdn,
+  $project_config_repo = 'https://git.openstack.org/openstack-infra/project-config',
 ) {
   if ($::osfamily == 'Debian') {
     include apt
@@ -124,6 +125,10 @@ class os_ext_testing::base(
 
   }
 
+  class { 'project_config':
+    url  => $project_config_repo,
+  }
+
   file { '/etc/puppet/puppet.conf':
     ensure  => present,
     owner   => 'root',
@@ -144,7 +149,7 @@ class os_ext_testing::base(
     recurse => true,
     purge   => true,
     force   => true,
-    source  => 'puppet:///modules/openstack_project/nodepool/scripts',
+    source  => $::project_config::nodepool_scripts_dir,
   }
 
 }
