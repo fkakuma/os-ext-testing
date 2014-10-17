@@ -11,6 +11,8 @@ class os_ext_testing::master (
   $ssl_chain_file_contents = '',
   $jenkins_ssh_private_key = '',
   $jenkins_ssh_public_key = '',
+  $gearman_workers = ['master'],
+  $project_config_repo = 'https://git.openstack.org/openstack-infra/project-config',
   $publish_host = 'localhost',
   $url_pattern = 'http://localhost/{change.number}/{change.patchset}/{pipeline.name}/{job.name}/{build.number}',
   $log_root_url= "$publish_host/logs",
@@ -24,7 +26,6 @@ class os_ext_testing::master (
   $git_name = 'MyVendor Jenkins',
   $jenkins_url = 'http://localhost:8080/',
   $zuul_url = '',
-  $project_config_repo = '',
   $scp_name = '',
   $scp_host = '',
   $scp_port = '',
@@ -33,10 +34,17 @@ class os_ext_testing::master (
   $scp_keyfile = '',
   $scp_destpath = '',
 ) {
-  class { 'os_ext_testing::base':
-    project_config_repo => $project_config_repo,
-  }
   include apache
+
+  # Turn a list of hostnames into a list of iptables rules
+  $iptables_rules = regsubst ($gearman_workers, '^(.*)$', '-m state --state NEW -m tcp -p tcp --dport 4730,8888 -s \1 -j ACCEPT')
+
+  class { 'openstack_project::server':
+    iptables_public_tcp_ports => [80, 443],
+    iptables_rules6           => $iptables_rules,
+    iptables_rules4           => $iptables_rules,
+    sysadmins                 => $sysadmins,
+  }
 
   # Note that we need to do this here, once instead of in the jenkins::master
   # module because zuul also defines these resource blocks and Puppet barfs.
@@ -69,20 +77,38 @@ class os_ext_testing::master (
     ssl_chain_file_contents => $ssl_chain_file_contents,
     jenkins_ssh_private_key => $jenkins_ssh_private_key,
     jenkins_ssh_public_key  => $jenkins_ssh_public_key,
-    scp_name                => $scp_name,
-    scp_host                => $scp_host,
-    scp_port                => $scp_port,
-    scp_user                => $scp_user,
-    scp_password            => $scp_password,
-    scp_keyfile             => $scp_keyfile,
-    scp_destpath            => $scp_destpath,
+  }
+
+  file { '/var/lib/jenkins/plugins/scp.hpi':
+    ensure  => present,
+    owner   => 'jenkins',
+    group   => 'jenkins',
+    mode    => 0644,
+    source  => 'puppet:///modules/jenkins_3p/scp.hpi',
+    require => File['/var/lib/jenkins/plugins'],
+  }
+
+  file { '/var/lib/jenkins/be.certipost.hudson.plugin.SCPRepositoryPublisher.xml':
+    content => template('jenkins_3p/jenkins.scp.erb'),
+    owner   => 'jenkins',
+    group   => 'jenkins',
+    mode    => '0644',
+    require => File['/var/lib/jenkins'],
+  }
+
+  file { '/var/lib/jenkins/credentials.xml':
+    source  => 'puppet:///modules/jenkins_3p/credentials.xml',
+    owner   => 'jenkins',
+    group   => 'jenkins',
+    mode    => '0644',
+    require => File['/var/lib/jenkins/.ssh/id_rsa'],
   }
 
   jenkins::plugin { 'ansicolor':
-    version => '0.3.1',
+    version => '0.4.0',
   }
   jenkins::plugin { 'build-timeout':
-    version => '1.10',
+    version => '1.14',
   }
   jenkins::plugin { 'copyartifact':
     version => '1.22',
@@ -94,7 +120,7 @@ class os_ext_testing::master (
     version => '1.70',
   }
   jenkins::plugin { 'gearman-plugin':
-    version => '0.0.6',
+    version => '0.0.7',
   }
   jenkins::plugin { 'git':
     version => '1.1.23',
@@ -114,6 +140,13 @@ class os_ext_testing::master (
   jenkins::plugin { 'extended-read-permission':
     version => '1.0',
   }
+  jenkins::plugin { 'zmq-event-publisher':
+    version => '0.0.3',
+  }
+#  TODO(jeblair): release
+#  jenkins::plugin { 'scp':
+#    version => '1.9',
+#  }
   jenkins::plugin { 'postbuild-task':
     version => '1.8',
   }
@@ -175,23 +208,22 @@ class os_ext_testing::master (
     require => Class['jenkins::master'],
   }
 
-  if $manage_jenkins_jobs == true {
-    class { '::jenkins::job_builder':
-      url      => "http://127.0.0.1:8080/",
-      username => 'jenkins',
-      password => '',
-    }
+  class { 'project_config':
+    url  => $project_config_repo,
+  }
 
-    file { '/etc/jenkins_jobs/config':
-      ensure  => directory,
-      owner   => 'root',
-      group   => 'root',
-      mode    => '0755',
-      recurse => true,
-      force   => true,
-      source  => 'puppet:///modules/os_ext_testing/jenkins_job_builder/config',
-      notify  => Exec['jenkins_jobs_update'],
-      require => Exec['restart_jenkins'],
+  if $manage_jenkins_jobs == true {
+
+    class { '::jenkins::job_builder':
+      url          => "http://${vhost_name}:8080/",
+      username     => $jenkins_jobs_username,
+      password     => $jenkins_jobs_password,
+      git_revision => $jenkins_git_revision,
+      git_url      => $jenkins_git_url,
+      config_dir   => ['puppet:///modules/os_ext_testing/jenkins_job_builder/config',
+                       "${data_repo_dir}/etc/zuul/layout.yaml"],
+      require      => [$::project_config::config_dir,
+                       Exec['restart_jenkins']],
     }
 
     file { '/etc/jenkins_jobs/config/macros.yaml':
@@ -234,21 +266,20 @@ class os_ext_testing::master (
   }
   class { '::zuul::merger': }
 
-
   if $upstream_gerrit_ssh_pub_key != '' {
     file { '/home/zuul/.ssh':
       ensure  => directory,
       owner   => 'zuul',
       group   => 'zuul',
       mode    => '0700',
-      require => Class['::zuul'],
+      require => User['zuul'],
     }
     file { '/home/zuul/.ssh/known_hosts':
       ensure  => present,
       owner   => 'zuul',
       group   => 'zuul',
       mode    => '0600',
-      content => "[review.openstack.org]:29418,[198.101.231.251]:29418 ${upstream_gerrit_host_pub_key}",
+      content => "review.openstack.org,23.253.232.87,2001:4800:7815:104:3bc3:d7f6:ff03:bf5d ${gerrit_ssh_host_key}",
       replace => true,
       require => File['/home/zuul/.ssh'],
     }
@@ -280,7 +311,7 @@ class os_ext_testing::master (
     source => 'puppet:///modules/openstack_project/zuul/gearman-logging.conf',
     notify => Exec['zuul-reload'],
   }
-  
+
   file { '/etc/zuul/merger-logging.conf':
     ensure => present,
     source => 'puppet:///modules/openstack_project/zuul/merger-logging.conf',
@@ -299,4 +330,3 @@ class os_ext_testing::master (
     require => File['/var/lib/recheckwatch'],
   }
 }
-
