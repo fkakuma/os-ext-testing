@@ -123,7 +123,7 @@ CLASS_ARGS="$CLASS_ARGS ssl_cert_file_contents => '$APACHE_SSL_CERT_FILE', ssl_k
 CLASS_ARGS="$CLASS_ARGS upstream_gerrit_server => '$UPSTREAM_GERRIT_SERVER', "
 CLASS_ARGS="$CLASS_ARGS upstream_gerrit_user => '$UPSTREAM_GERRIT_USER', "
 CLASS_ARGS="$CLASS_ARGS upstream_gerrit_ssh_private_key => '$UPSTREAM_GERRIT_SSH_PRIVATE_KEY_CONTENTS', "
-CLASS_ARGS="$CLASS_ARGS upstream_gerrit_host_pub_key => '$UPSTREAM_GERRIT_HOST_PUB_KEY', "
+CLASS_ARGS="$CLASS_ARGS upstream_gerrit_host_pub_key => '$UPSTREAM_GERRIT_HOST_PUBLIC_KEY', "
 CLASS_ARGS="$CLASS_ARGS git_email => '$GIT_EMAIL', git_name => '$GIT_NAME', "
 CLASS_ARGS="$CLASS_ARGS publish_host => '$PUBLISH_HOST', "
 CLASS_ARGS="$CLASS_ARGS jenkins_url => '$JENKINS_URL', "
@@ -143,7 +143,7 @@ CLASS_ARGS="$CLASS_ARGS scp_destpath => '$SCP_DESTPATH', "
 # to do this in Puppet... which won't let me execute Ruby code in
 # a manifest and doesn't allow you to "merge" the contents of two
 # directory sources in the file resource. :(
-sudo mkdir -p /etc/jenkins_jobs/config
-sudo cp -r $DATA_PATH/etc/jenkins_jobs/config/* /etc/jenkins_jobs/config/
+#sudo mkdir -p /etc/jenkins_jobs/config
+#sudo cp -r $DATA_PATH/etc/jenkins_jobs/config/* /etc/jenkins_jobs/config/
 
 sudo puppet apply --verbose $PUPPET_MODULE_PATH -e "class {'os_ext_testing::master': $CLASS_ARGS }"

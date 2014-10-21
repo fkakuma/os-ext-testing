@@ -39,10 +39,10 @@ class os_ext_testing::master (
   # Turn a list of hostnames into a list of iptables rules
   $iptables_rules = regsubst ($gearman_workers, '^(.*)$', '-m state --state NEW -m tcp -p tcp --dport 4730,8888 -s \1 -j ACCEPT')
 
-  class { 'openstack_project::server':
-    iptables_public_tcp_ports => [80, 443],
-    iptables_rules6           => $iptables_rules,
-    iptables_rules4           => $iptables_rules,
+  class { 'os_ext_testing::server':
+    iptables_public_tcp_ports => [80, 443, 8080, 9000],
+    iptables_rules6           => [],
+    iptables_rules4           => [],
     sysadmins                 => $sysadmins,
   }
 
@@ -214,16 +214,20 @@ class os_ext_testing::master (
 
   if $manage_jenkins_jobs == true {
 
-    class { '::jenkins::job_builder':
+    class { '::jenkins_3p::job_builder':
       url          => "http://${vhost_name}:8080/",
       username     => $jenkins_jobs_username,
       password     => $jenkins_jobs_password,
       git_revision => $jenkins_git_revision,
       git_url      => $jenkins_git_url,
-      config_dir   => ['puppet:///modules/os_ext_testing/jenkins_job_builder/config',
-                       "${data_repo_dir}/etc/zuul/layout.yaml"],
-      require      => [$::project_config::config_dir,
-                       Exec['restart_jenkins']],
+      config_dir   => 'puppet:///modules/os_ext_testing/jenkins_job_builder/config',
+      require      => $::project_config::config_dir,
+    }
+
+    exec { 'copy_my_project':
+      command => "cp ${data_repo_dir}/etc/jenkins_jobs/config/* /etc/jenkins_jobs/config/",
+      path    => ['/sbin', '/bin', '/usr/sbin', '/usr/bin'],
+      require => File['/etc/jenkins_jobs/config'],
     }
 
     file { '/etc/jenkins_jobs/config/macros.yaml':
@@ -233,7 +237,8 @@ class os_ext_testing::master (
       mode   => '0755',
       content => template('os_ext_testing/jenkins_job_builder/config/macros.yaml.erb'),
       notify  => Exec['jenkins_jobs_update'],
-      require => Exec['restart_jenkins'],
+      require => [Exec['copy_my_project'],
+                  Exec['restart_jenkins']],
     }
 
     file { '/etc/default/jenkins':
@@ -266,7 +271,7 @@ class os_ext_testing::master (
   }
   class { '::zuul::merger': }
 
-  if $upstream_gerrit_ssh_pub_key != '' {
+  if $upstream_gerrit_host_pub_key != '' {
     file { '/home/zuul/.ssh':
       ensure  => directory,
       owner   => 'zuul',
@@ -279,7 +284,7 @@ class os_ext_testing::master (
       owner   => 'zuul',
       group   => 'zuul',
       mode    => '0600',
-      content => "review.openstack.org,23.253.232.87,2001:4800:7815:104:3bc3:d7f6:ff03:bf5d ${gerrit_ssh_host_key}",
+      content => "review.openstack.org,23.253.232.87,2001:4800:7815:104:3bc3:d7f6:ff03:bf5d ${upstream_gerrit_host_pub_key}",
       replace => true,
       require => File['/home/zuul/.ssh'],
     }
